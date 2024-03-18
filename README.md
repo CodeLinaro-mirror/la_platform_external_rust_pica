@@ -1,5 +1,5 @@
 [![Crate](https://img.shields.io/crates/v/pica?style=flat-square)](https://crates.io/crates/pica)
-[![Build workflow](https://img.shields.io/github/actions/workflow/status/google/pica/build.yml?style=flat-square)](https://github.com/google/pica/actions/workflows/build.yml?query=branch%3Amain)
+[![Build workflow](https://img.shields.io/github/actions/workflow/status/google/pica/build.yml?style=flat-square)](https://github.com/google/pica/actions/workflows/build_and_test.yml?query=branch%3Amain)
 
 # Pica
 
@@ -117,3 +117,23 @@ $> --> pica_create_anchor 00:01 # Create another one
 
 Pica also implements HTTP commands, the documentation is available at `http://0.0.0.0:3000/openapi`.
 The set of HTTP commands let the user interact with Pica amd modify its scene.
+
+# Tests
+
+Setup your python env:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install pytest
+pip install pytest_asyncio
+pip install -e py/pica/
+```
+
+Then run the tests
+
+```bash
+pytest --log-cli-level=DEBUG -v
+```
+
+The tests are located in `./tests/`
