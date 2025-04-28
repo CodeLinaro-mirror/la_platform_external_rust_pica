@@ -253,7 +253,7 @@ impl Pica {
                     .await
                     .ok_or(anyhow::anyhow!("input packet stream closed"))?;
                 let header =
-                    packets::uci::CommonPacketHeader::parse(&packet[0..COMMON_HEADER_SIZE])?;
+                    packets::uci::CommonPacketHeader::decode_full(&packet[0..COMMON_HEADER_SIZE])?;
 
                 if let Some(file) = pcapng_file {
                     file.write(&packet, pcapng::Direction::Tx)?;
@@ -266,8 +266,8 @@ impl Pica {
                     None => complete_packet = Some(packet),
                 }
 
-                if header.get_pbf() == packets::uci::PacketBoundaryFlag::Complete
-                    || header.get_mt() == packets::uci::MessageType::Data
+                if header.pbf == packets::uci::PacketBoundaryFlag::Complete
+                    || header.mt == packets::uci::MessageType::Data
                 {
                     break;
                 }
@@ -445,14 +445,18 @@ impl Pica {
                     .app_config
                     .device_mac_address
                     .unwrap();
-                let local = self
+                let Some(local) = self
                     .ranging_estimator
                     .estimate(&device.handle, &peer_device.handle)
-                    .unwrap_or(Default::default());
-                let remote = self
+                else {
+                    continue;
+                };
+                let Some(remote) = self
                     .ranging_estimator
                     .estimate(&peer_device.handle, &device.handle)
-                    .unwrap_or(Default::default());
+                else {
+                    continue;
+                };
                 measurements.push(make_measurement(&peer_mac_address, local, remote));
             }
 
@@ -469,7 +473,7 @@ impl Pica {
             peer_device
                 .tx
                 .send(
-                    DataMessageRcvBuilder {
+                    DataMessageRcv {
                         application_data: session.data().clone().into(),
                         data_sequence_number: 0x01,
                         pbf: PacketBoundaryFlag::Complete,
@@ -477,7 +481,6 @@ impl Pica {
                         source_address: session.app_config.device_mac_address.unwrap().into(),
                         status: uci::Status::Ok,
                     }
-                    .build()
                     .encode_to_vec()
                     .unwrap(),
                 )
@@ -488,7 +491,7 @@ impl Pica {
                 .tx
                 .send(
                     // TODO: support extended address
-                    ShortMacTwoWaySessionInfoNtfBuilder {
+                    ShortMacTwoWaySessionInfoNtf {
                         sequence_number: session.sequence_number,
                         session_token: session_id,
                         rcr_indicator: 0,            //TODO
@@ -496,7 +499,6 @@ impl Pica {
                         two_way_ranging_measurements: measurements,
                         vendor_data: vec![],
                     }
-                    .build()
                     .encode_to_vec()
                     .unwrap(),
                 )
