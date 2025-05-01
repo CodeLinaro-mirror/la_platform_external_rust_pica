@@ -25,6 +25,15 @@ pub mod uci {
 
     include!(concat!(env!("OUT_DIR"), "/uci_packets.rs"));
 
+    impl ControlPacket {
+        pub fn is_core_device_reset_cmd(&self) -> bool {
+            let Ok(core_packet) = CorePacket::try_from(self) else {
+                return false;
+            };
+            core_packet.oid == CoreOpcodeId::DeviceReset
+        }
+    }
+
     /// Size of common UCI packet header.
     pub const COMMON_HEADER_SIZE: usize = 1;
     /// Size of UCI packet headers.
@@ -52,17 +61,18 @@ pub mod uci {
         socket.read_exact(&mut packet[0..HEADER_SIZE]).await.ok()?;
 
         let common_packet_header =
-            CommonPacketHeader::parse(&packet[0..COMMON_HEADER_SIZE]).ok()?;
+            CommonPacketHeader::decode_full(&packet[0..COMMON_HEADER_SIZE]).ok()?;
 
-        let payload_length = match common_packet_header.get_mt() {
+        let payload_length = match common_packet_header.mt {
             MessageType::Data => {
-                let data_packet_header = DataPacketHeader::parse(&packet[0..HEADER_SIZE]).ok()?;
-                data_packet_header.get_payload_length() as usize
+                let data_packet_header =
+                    DataPacketHeader::decode_full(&packet[0..HEADER_SIZE]).ok()?;
+                data_packet_header.payload_length as usize
             }
             _ => {
                 let control_packet_header =
-                    ControlPacketHeader::parse(&packet[0..HEADER_SIZE]).ok()?;
-                control_packet_header.get_payload_length() as usize
+                    ControlPacketHeader::decode_full(&packet[0..HEADER_SIZE]).ok()?;
+                control_packet_header.payload_length as usize
             }
         };
 
