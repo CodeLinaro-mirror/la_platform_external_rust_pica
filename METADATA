@@ -8,11 +8,12 @@ third_party {
     type: HOMEPAGE
     value: "https://github.com/google/pica"
   }
-  url {
-    type: GIT
+  identifier {
+    type: "Git"
     value: "https://github.com/google/pica.git"
+    version: "dbcb4e93c352b11bdc7c746665f2fa05bae0f251"
+    closest_version: "v0.1.12"
   }
-  version: "v0.1.12"
   license_type: NOTICE
   last_upgrade_date { year: 2024 month: 6 day: 11 }
 }
