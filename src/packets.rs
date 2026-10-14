@@ -17,6 +17,8 @@
 /// UCI packet parser and serializer.
 pub mod uci {
     #![allow(clippy::all)]
+    #![allow(clippy::pedantic)]
+    #![allow(clippy::indexing_slicing, clippy::unwrap_used)]
     #![allow(non_upper_case_globals)]
     #![allow(non_camel_case_types)]
     #![allow(non_snake_case)]
@@ -41,7 +43,11 @@ pub mod uci {
     /// Maximum size of an UCI control packet payload.
     pub const MAX_CTRL_PACKET_PAYLOAD_SIZE: usize = 255;
     /// Maximum size of an UCI data packet payload.
-    pub const MAX_DATA_PACKET_PAYLOAD_SIZE: usize = 1024;
+    pub const MAX_DATA_PACKET_PAYLOAD_SIZE: usize = 1020;
+    /// Maximum size of a reassembled UCI application data message.
+    pub const MAX_DATA_MESSAGE_SIZE: usize = 4096;
+    /// Size of the DATA_MESSAGE_SND header carried by the first packet of a message.
+    pub const DATA_MESSAGE_SND_HEADER_SIZE: usize = 16;
 
     // Extract the message type from the first 3 bits of the passed (header) byte
     pub fn parse_message_type(byte: u8) -> MessageType {
@@ -58,27 +64,33 @@ pub mod uci {
         let mut packet = vec![0; HEADER_SIZE];
 
         // Read the common packet header.
-        socket.read_exact(&mut packet[0..HEADER_SIZE]).await.ok()?;
+        socket
+            .read_exact(packet.get_mut(..HEADER_SIZE)?)
+            .await
+            .ok()?;
 
         let common_packet_header =
-            CommonPacketHeader::decode_full(&packet[0..COMMON_HEADER_SIZE]).ok()?;
+            CommonPacketHeader::decode_full(packet.get(..COMMON_HEADER_SIZE)?).ok()?;
 
         let payload_length = match common_packet_header.mt {
             MessageType::Data => {
                 let data_packet_header =
-                    DataPacketHeader::decode_full(&packet[0..HEADER_SIZE]).ok()?;
+                    DataPacketHeader::decode_full(packet.get(..HEADER_SIZE)?).ok()?;
                 data_packet_header.payload_length as usize
             }
             _ => {
                 let control_packet_header =
-                    ControlPacketHeader::decode_full(&packet[0..HEADER_SIZE]).ok()?;
+                    ControlPacketHeader::decode_full(packet.get(..HEADER_SIZE)?).ok()?;
                 control_packet_header.payload_length as usize
             }
         };
 
         // Read the packet payload.
         packet.resize(payload_length + HEADER_SIZE, 0);
-        socket.read_exact(&mut packet[HEADER_SIZE..]).await.ok()?;
+        socket
+            .read_exact(packet.get_mut(HEADER_SIZE..)?)
+            .await
+            .ok()?;
 
         Some((packet, socket))
     }
@@ -88,10 +100,10 @@ pub mod uci {
     pub async fn write(
         mut socket: tokio::net::tcp::OwnedWriteHalf,
         packet: Vec<u8>,
-    ) -> std::result::Result<tokio::net::tcp::OwnedWriteHalf, anyhow::Error> {
+    ) -> Result<tokio::net::tcp::OwnedWriteHalf, ()> {
         use tokio::io::AsyncWriteExt;
 
-        socket.write_all(&packet).await?;
+        socket.write_all(&packet).await.map_err(|_| ())?;
 
         Ok(socket)
     }
