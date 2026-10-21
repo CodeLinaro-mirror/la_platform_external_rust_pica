@@ -11,9 +11,9 @@ third_party {
   identifier {
     type: "Git"
     value: "https://github.com/google/pica.git"
-    version: "dbcb4e93c352b11bdc7c746665f2fa05bae0f251"
-    closest_version: "v0.1.12"
+    version: "f530ef5e70d4d35717501200b48532e7d2ff9534"
+    closest_version: "v0.1.13"
   }
   license_type: NOTICE
-  last_upgrade_date { year: 2024 month: 6 day: 11 }
+  last_upgrade_date { year: 2026 month: 10 day: 14 }
 }
