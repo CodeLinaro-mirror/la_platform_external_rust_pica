@@ -46,7 +46,7 @@ impl MacAddress {
 impl From<&MacAddress> for u64 {
     fn from(mac_address: &MacAddress) -> Self {
         match mac_address {
-            MacAddress::Short(addr) => u16::from_le_bytes(*addr) as u64,
+            MacAddress::Short(addr) => u64::from(u16::from_le_bytes(*addr)),
             MacAddress::Extended(addr) => u64::from_le_bytes(*addr),
         }
     }
@@ -94,7 +94,7 @@ impl TryFrom<String> for MacAddress {
 impl From<&MacAddress> for String {
     fn from(mac_address: &MacAddress) -> Self {
         let to_string = |addr: &[u8]| -> String {
-            let mac_address: Vec<_> = addr.iter().map(|byte| format!("{:02X}:", byte)).collect();
+            let mac_address: Vec<_> = addr.iter().map(|byte| format!("{byte:02X}:")).collect();
             let s = mac_address
                 .iter()
                 .flat_map(|byte| byte.chars())
@@ -179,7 +179,7 @@ mod tests {
     fn test_extended_mac_to_u64() {
         let extended_mac = MacAddress::Extended([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         let result: u64 = extended_mac.into();
-        let expected: u64 = 0x0807060504030201;
+        let expected: u64 = 0x0807_0605_0403_0201;
         assert_eq!(result, expected);
     }
 }
