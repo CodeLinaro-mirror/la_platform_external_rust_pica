@@ -17,16 +17,11 @@
 //! - [UCI] FiRa Consortium UWB Command Interface Generic Technical specification
 
 use crate::packets::uci::{self, *};
-use crate::{AppConfig, MacAddress};
+use crate::{AppConfig, DlTdoaMeasurement, MacAddress, UciPacket};
 use bytes::{Bytes, BytesMut};
 use pdl_runtime::Packet;
 use std::collections::HashSet;
-use std::time::Duration;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time;
-
-use super::UciPacket;
+use std::time::{Duration, Instant};
 
 pub struct DataTransfer {
     pub sequence_number: u16,
@@ -58,6 +53,12 @@ impl DataTransfer {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DlTdoaRangingRounds {
+    Tag(Vec<u8>),
+    Anchor(Vec<uci::DtAnchorRangingRound>),
+}
+
 pub struct Session {
     /// cf. [UCI] 7.1
     pub state: SessionState,
@@ -70,19 +71,14 @@ pub struct Session {
     pub session_type: SessionType,
     pub sequence_number: u32,
     pub ranging_count: u32,
+    dl_tdoa_rounds: Option<DlTdoaRangingRounds>,
     pub app_config: AppConfig,
-    pub ranging_task: Option<JoinHandle<()>>,
     pub in_range_peers: HashSet<MacAddress>,
-    tx: mpsc::UnboundedSender<UciPacket>,
+    next_ranging_at: Option<Instant>,
 }
 
 impl Session {
-    pub fn new(
-        id: u32,
-        session_type: SessionType,
-        device_handle: usize,
-        tx: mpsc::UnboundedSender<UciPacket>,
-    ) -> Self {
+    pub fn new(id: u32, session_type: SessionType, device_handle: usize) -> Self {
         Self {
             state: SessionState::SessionStateDeinit,
             id,
@@ -92,37 +88,65 @@ impl Session {
             session_type,
             sequence_number: 0,
             ranging_count: 0,
+            dl_tdoa_rounds: None,
             app_config: AppConfig::new(session_type),
-            ranging_task: None,
             in_range_peers: HashSet::new(),
-            tx,
+            next_ranging_at: None,
         }
     }
 
-    pub fn set_state(&mut self, session_state: SessionState, reason_code: ReasonCode) {
-        // No transition: ignore
+    pub fn dt_tag_active_rounds(&self) -> &[u8] {
+        match &self.dl_tdoa_rounds {
+            Some(DlTdoaRangingRounds::Tag(rounds)) => rounds.as_slice(),
+            _ => &[],
+        }
+    }
+
+    pub fn dt_anchor_ranging_rounds(&self) -> &[uci::DtAnchorRangingRound] {
+        match &self.dl_tdoa_rounds {
+            Some(DlTdoaRangingRounds::Anchor(rounds)) => rounds.as_slice(),
+            _ => &[],
+        }
+    }
+
+    pub fn set_dt_tag_ranging_rounds(&mut self, round_indexes: Vec<u8>) {
+        self.dl_tdoa_rounds = Some(DlTdoaRangingRounds::Tag(round_indexes));
+    }
+
+    pub fn set_dt_anchor_ranging_rounds(&mut self, rounds: Vec<uci::DtAnchorRangingRound>) {
+        self.dl_tdoa_rounds = Some(DlTdoaRangingRounds::Anchor(rounds));
+    }
+
+    pub fn invalid_start_reason(&self) -> Option<ReasonCode> {
+        self.app_config
+            .invalid_start_reason()
+            .or_else(|| match self.app_config.dl_tdoa_role()? {
+                uci::DeviceRole::DtAnchor if self.dt_anchor_ranging_rounds().is_empty() => {
+                    Some(ReasonCode::ErrorDtAnchorRangingRoundsNotConfigured)
+                }
+                uci::DeviceRole::DtTag if self.dt_tag_active_rounds().is_empty() => {
+                    Some(ReasonCode::ErrorDtTagRangingRoundsNotConfigured)
+                }
+                _ => None,
+            })
+    }
+
+    #[must_use]
+    pub fn set_state(
+        &mut self,
+        session_state: SessionState,
+        reason_code: ReasonCode,
+    ) -> Option<SessionStatusNtf> {
         if session_state == self.state {
-            return;
+            return None;
         }
 
-        // Send status notification
         self.state = session_state;
-        let tx = self.tx.clone();
-        let session_id = self.id;
-        tokio::spawn(async move {
-            time::sleep(Duration::from_millis(1)).await;
-            if let Err(e) = tx.send(
-                SessionStatusNtf {
-                    session_token: session_id,
-                    session_state,
-                    reason_code: reason_code.into(),
-                }
-                .encode_to_vec()
-                .expect("failed to encode SessionStatusNtf"),
-            ) {
-                tracing::debug!("Channel closed: {e}");
-            }
-        });
+        Some(SessionStatusNtf {
+            session_token: self.id,
+            session_state,
+            reason_code,
+        })
     }
 
     pub fn get_dst_mac_address(&self) -> impl Iterator<Item = MacAddress> + '_ {
@@ -182,22 +206,72 @@ impl Session {
         self.state
     }
 
-    pub fn init(&mut self) {
+    #[must_use]
+    pub fn init(&mut self) -> Option<SessionStatusNtf> {
         self.set_state(
             SessionState::SessionStateInit,
             ReasonCode::StateChangeWithSessionManagementCommands,
-        );
+        )
     }
 
-    pub fn stop_ranging_task(&mut self) {
-        if let Some(handle) = &self.ranging_task {
-            handle.abort();
-            self.ranging_task = None;
+    pub fn set_app_config(&mut self, app_config: AppConfig) {
+        let old_interval = self.ranging_interval();
+        self.app_config = app_config;
+        let new_interval = self.ranging_interval();
+        if new_interval != old_interval
+            && let Some(deadline) = self.next_ranging_at
+        {
+            let now = Instant::now();
+            self.next_ranging_at = Some(
+                deadline
+                    .checked_sub(old_interval)
+                    .map_or(now + new_interval, |last| (last + new_interval).max(now)),
+            );
         }
+    }
+
+    pub fn ranging_interval_ms(&self) -> u32 {
+        self.app_config
+            .ranging_duration()
+            .saturating_mul(self.app_config.block_stride())
+    }
+
+    fn ranging_interval(&self) -> Duration {
+        Duration::from_millis(u64::from(self.ranging_interval_ms()))
+    }
+
+    pub fn next_ranging_at(&self) -> Option<Instant> {
+        self.next_ranging_at
+    }
+
+    pub fn start_ranging(&mut self) {
+        self.next_ranging_at = Some(Instant::now() + self.ranging_interval());
+    }
+
+    pub fn poll_ranging(&mut self, now: Instant) -> bool {
+        let Some(deadline) = self.next_ranging_at else {
+            return false;
+        };
+        if now < deadline {
+            return false;
+        }
+        let interval = self.ranging_interval();
+        let next = deadline + interval;
+        self.next_ranging_at = Some(if next > now { next } else { now + interval });
+        true
+    }
+
+    pub fn stop_ranging(&mut self) {
+        self.next_ranging_at = None;
         self.sequence_number = 0;
         self.ranging_count = 0;
         self.in_range_peers.clear();
         self.clear_data();
+    }
+
+    pub fn has_reached_max_measurements(&self) -> bool {
+        let max_measurements = u32::from(self.app_config.max_number_of_measurements());
+        max_measurements != 0 && self.ranging_count >= max_measurements
     }
 
     pub fn data_message_snd(
@@ -291,17 +365,58 @@ impl Session {
         }
         .try_into()
     }
-}
 
-impl Drop for Session {
-    fn drop(&mut self) {
-        // Make sure to abort the ranging task when dropping the session,
-        // the default behaviour when dropping a task handle is to detach
-        // the task, which is undesirable.
-        self.stop_ranging_task();
-        self.set_state(
-            SessionState::SessionStateDeinit,
-            ReasonCode::StateChangeWithSessionManagementCommands,
-        );
+    pub fn encode_dl_tdoa_session_info_ntf(
+        &self,
+        measurements: Vec<DlTdoaMeasurement>,
+    ) -> Option<UciPacket> {
+        match self.app_config.mac_address_mode() {
+            MacAddressMode::Mode0 => Some(
+                ShortMacDlTDoASessionInfoNtf {
+                    sequence_number: self.sequence_number,
+                    session_token: self.id,
+                    rcr_indicator: 0,
+                    current_ranging_interval: self.ranging_interval_ms(),
+                    dl_tdoa_measurements: measurements
+                        .into_iter()
+                        .filter_map(|m| match m.mac_address {
+                            MacAddress::Short(addr) => Some(ShortAddressDlTdoaRangingMeasurement {
+                                mac_address: u16::from_le_bytes(addr),
+                                measurement: m.measurement,
+                            }),
+                            MacAddress::Extended(_) => None,
+                        })
+                        .collect(),
+                }
+                .encode_to_vec()
+                .expect("failed to encode ShortMacDlTDoASessionInfoNtf"),
+            ),
+            MacAddressMode::Mode2 => Some(
+                ExtendedMacDlTDoASessionInfoNtf {
+                    sequence_number: self.sequence_number,
+                    session_token: self.id,
+                    rcr_indicator: 0,
+                    current_ranging_interval: self.ranging_interval_ms(),
+                    dl_tdoa_measurements: measurements
+                        .into_iter()
+                        .filter_map(|m| match m.mac_address {
+                            MacAddress::Extended(addr) => {
+                                Some(ExtendedAddressDlTdoaRangingMeasurement {
+                                    mac_address: u64::from_le_bytes(addr),
+                                    measurement: m.measurement,
+                                })
+                            }
+                            MacAddress::Short(_) => None,
+                        })
+                        .collect(),
+                }
+                .encode_to_vec()
+                .expect("failed to encode ExtendedMacDlTDoASessionInfoNtf"),
+            ),
+            mode => {
+                tracing::warn!("Unsupported MAC address mode {mode:?}");
+                None
+            }
+        }
     }
 }

@@ -29,13 +29,11 @@ rust_library_host {
         "src/lib.rs",
         ":libpica_uci_packets",
     ],
+    features: ["tokio"],
     rustlibs: [
         "libbytes",
-        "libfutures",
         "libhex",
-        "libparking_lot",
         "libpdl_runtime",
-        "libserde",
         "libthiserror",
         "libtokio",
         "libtracing",
@@ -47,7 +45,7 @@ rust_binary_host {
     srcs: ["src/bin/main.rs"],
     rustlibs: [
         "libclap",
-        "libfutures",
+        "libparking_lot",
         "libpica",
         "libthiserror",
         "libtokio",
