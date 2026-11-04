@@ -405,7 +405,7 @@ class RangingRoundUsage(enum.IntEnum):
     DS_TWR_DEFERRED_MODE = 0x2
     SS_TWR_NON_DEFERRED_MODE = 0x3
     DS_TWR_NON_DEFERRED_MODE = 0x4
-    ON_WAY_RANGING_DL_TDOA = 0x5
+    ONE_WAY_RANGING_DL_TDOA = 0x5
     OWR_AOA_MEASUREMENT = 0x6
     ESS_TWR_NON_DEFERRED = 0x7
     ADS_TWR_NON_DEFERRED = 0x8
@@ -852,27 +852,46 @@ class SessionDataTransferStatusNtfConfig(enum.IntEnum):
 
 
 class CapTlvType(enum.IntEnum):
-    SUPPORTED_FIRA_PHY_VERSION_RANGE = 0x0
-    SUPPORTED_FIRA_MAC_VERSION_RANGE = 0x1
-    SUPPORTED_DEVICE_ROLES = 0x2
-    SUPPORTED_RANGING_METHOD = 0x3
-    SUPPORTED_STS_CONFIG = 0x4
-    SUPPORTED_MULTI_NODE_MODES = 0x5
-    SUPPORTED_RANGING_TIME_STRUCT = 0x6
-    SUPPORTED_SCHEDULED_MODE = 0x7
-    SUPPORTED_HOPPING_MODE = 0x8
-    SUPPORTED_BLOCK_STRIDING = 0x9
-    SUPPORTED_UWB_INITIATION_TIME = 0xa
-    SUPPORTED_CHANNELS = 0xb
-    SUPPORTED_RFRAME_CONFIG = 0xc
-    SUPPORTED_CC_CONSTRAINT_LENGTH = 0xd
-    SUPPORTED_BPRF_PARAMETER_SETS = 0xe
-    SUPPORTED_HPRF_PARAMETER_SETS = 0xf
-    SUPPORTED_AOA = 0x10
-    SUPPORTED_EXTENDED_MAC_ADDRESS = 0x11
-    SUPPORTED_MAX_MESSAGE_SIZE = 0x12
-    SUPPORTED_MAX_DATA_PACKET_PAYLOAD_SIZE = 0x13
+    SUPPORTED_MAX_MESSAGE_SIZE = 0x0
+    SUPPORTED_MAX_DATA_PACKET_PAYLOAD_SIZE = 0x1
+    SUPPORTED_FIRA_PHY_VERSION_RANGE = 0x2
+    SUPPORTED_FIRA_MAC_VERSION_RANGE = 0x3
+    SUPPORTED_DEVICE_TYPE = 0x4
+    SUPPORTED_DEVICE_ROLES = 0x5
+    SUPPORTED_RANGING_METHOD = 0x6
+    SUPPORTED_STS_CONFIG = 0x7
+    SUPPORTED_MULTI_NODE_MODES = 0x8
+    SUPPORTED_RANGING_TIME_STRUCT = 0x9
+    SUPPORTED_SCHEDULED_MODE = 0xa
+    SUPPORTED_HOPPING_MODE = 0xb
+    SUPPORTED_BLOCK_STRIDING = 0xc
+    SUPPORTED_UWB_INITIATION_TIME = 0xd
+    SUPPORTED_CHANNELS = 0xe
+    SUPPORTED_RFRAME_CONFIG = 0xf
+    SUPPORTED_CC_CONSTRAINT_LENGTH = 0x10
+    SUPPORTED_BPRF_PARAMETER_SETS = 0x11
+    SUPPORTED_HPRF_PARAMETER_SETS = 0x12
+    SUPPORTED_AOA = 0x13
+    SUPPORTED_EXTENDED_MAC_ADDRESS = 0x14
+    SUPPORTED_SUSPEND_RANGING_SUPPORT = 0x15
+    SUPPORTED_SESSION_KEY_LENGTH = 0x16
+    SUPPORTED_DT_ANCHOR_MAX_ACTIVE_RR = 0x17
+    SUPPORTED_DT_TAG_MAX_ACTIVE_RR = 0x18
+    SUPPORTED_DT_TAG_BLOCK_SKIPPING = 0x19
+    CCC_SUPPORTED_CHAPS_PER_SLOT = 0xa0
+    CCC_SUPPORTED_SYNC_CODES = 0xa1
+    CCC_SUPPORTED_HOPPING_CONFIG_MODES_AND_SEQUENCES = 0xa2
+    CCC_SUPPORTED_CHANNELS = 0xa3
+    CCC_SUPPORTED_VERSIONS = 0xa4
+    CCC_SUPPORTED_UWB_CONFIGS = 0xa5
+    CCC_SUPPORTED_PULSE_SHAPE_COMBOS = 0xa6
+    CCC_SUPPORTED_RAN_MULTIPLIER = 0xa7
+    CCC_SUPPORTED_MAX_RANGING_SESSION_NUMBER = 0xa8
+    ALIRO_SUPPORTED_MAC_MODES = 0xac
+    ALIRO_SUPPORTED_PROTOCOL_VERSION = 0xad
     SUPPORTED_POWER_STATS = 0xc0
+    SUPPORTED_AOA_RESULT_REQ_ANTENNA_INTERLEAVING = 0xe3
+    SUPPORTED_RSSI_REPORTING = 0xe6
 
     @staticmethod
     def from_int(v: int) -> Union[int, 'CapTlvType']:
@@ -880,21 +899,6 @@ class CapTlvType(enum.IntEnum):
             return CapTlvType(v)
         except ValueError as exn:
             return v
-
-
-class AoaResultReqType(enum.IntEnum):
-    AOA_DISABLE = 0x0
-    AOA_ENABLE = 0x1
-    AOA_ENABLE_AZIMUTH = 0x2
-    AOA_ENABLE_ELEVATION = 0x3
-    AOA_ENABLE_INTERLEAVED = 0xf0
-
-    @staticmethod
-    def from_int(v: int) -> Union[int, 'AoaResultReqType']:
-        try:
-            return AoaResultReqType(v)
-        except ValueError as exn:
-            raise exn
 
 
 class DeviceState(enum.IntEnum):
@@ -966,6 +970,8 @@ class ReasonCode(enum.IntEnum):
     ERROR_REF_UWB_SESSION_RANGING_DURATION_MISMATCH = 0x3d
     ERROR_REF_UWB_SESSION_INVALID_OFFSET_TIME = 0x3e
     ERROR_REF_UWB_SESSION_LOST = 0x3f
+    ERROR_DT_ANCHOR_RANGING_ROUNDS_NOT_CONFIGURED = 0x40
+    ERROR_DT_TAG_RANGING_ROUNDS_NOT_CONFIGURED = 0x41
     VENDOR_SPECIFIC_REASON_CODE_2 = 0xff
 
     @staticmethod
@@ -2048,7 +2054,7 @@ class CoreGetCapsInfoCmd(CorePacket):
 
 @dataclass
 class CapTlv(Packet):
-    t: CapTlvType = field(kw_only=True, default=CapTlvType.SUPPORTED_FIRA_PHY_VERSION_RANGE)
+    t: CapTlvType = field(kw_only=True, default=CapTlvType.SUPPORTED_MAX_MESSAGE_SIZE)
     v: bytearray = field(kw_only=True, default_factory=bytearray)
 
     def __post_init__(self):
@@ -2606,7 +2612,7 @@ class SessionDeinitRsp(SessionConfigPacket):
 class SessionStatusNtf(SessionConfigPacket):
     session_token: int = field(kw_only=True, default=0)
     session_state: SessionState = field(kw_only=True, default=SessionState.SESSION_STATE_INIT)
-    reason_code: int = field(kw_only=True, default=0)
+    reason_code: ReasonCode = field(kw_only=True, default=ReasonCode.STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS)
 
     def __post_init__(self):
         self.mt = MessageType.NOTIFICATION
@@ -2622,7 +2628,7 @@ class SessionStatusNtf(SessionConfigPacket):
         value_ = int.from_bytes(span[0:4], byteorder='little')
         fields['session_token'] = value_
         fields['session_state'] = SessionState.from_int(span[4])
-        fields['reason_code'] = span[5]
+        fields['reason_code'] = ReasonCode.from_int(span[5])
         span = span[6:]
         return SessionStatusNtf(**fields), span
 
@@ -2633,9 +2639,6 @@ class SessionStatusNtf(SessionConfigPacket):
             self.session_token &= 4294967295
         _span.extend(int.to_bytes((self.session_token << 0), length=4, byteorder='little'))
         _span.append((self.session_state << 0))
-        if self.reason_code > 255:
-            print(f"Invalid value for field SessionStatusNtf::reason_code: {self.reason_code} > 255; the value will be truncated")
-            self.reason_code &= 255
         _span.append((self.reason_code << 0))
         return SessionConfigPacket.serialize(self, payload = bytes(_span))
 
@@ -3003,9 +3006,52 @@ class SessionGetStateRsp(SessionConfigPacket):
     def size(self) -> int:
         return 2
 
+class DtAnchorActingRole(enum.IntEnum):
+    RESPONDER = 0x0
+    INITIATOR = 0x1
+
+    @staticmethod
+    def from_int(v: int) -> Union[int, 'DtAnchorActingRole']:
+        try:
+            return DtAnchorActingRole(v)
+        except ValueError as exn:
+            raise exn
+
+@dataclass
+class DtAnchorRangingRound(Packet):
+    round_index: int = field(kw_only=True, default=0)
+    role: DtAnchorActingRole = field(kw_only=True, default=DtAnchorActingRole.RESPONDER)
+
+    def __post_init__(self):
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['DtAnchorRangingRound', bytes]:
+        fields = {'payload': None}
+        if len(span) < 2:
+            raise Exception('Invalid packet size')
+        fields['round_index'] = span[0]
+        fields['role'] = DtAnchorActingRole.from_int(span[1])
+        span = span[2:]
+        return DtAnchorRangingRound(**fields), span
+
+    def serialize(self, payload: bytes = None) -> bytes:
+        _span = bytearray()
+        if self.round_index > 255:
+            print(f"Invalid value for field DtAnchorRangingRound::round_index: {self.round_index} > 255; the value will be truncated")
+            self.round_index &= 255
+        _span.append((self.round_index << 0))
+        _span.append((self.role << 0))
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return 2
+
 @dataclass
 class SessionUpdateDtAnchorRangingRoundsCmd(SessionConfigPacket):
-    
+    session_token: int = field(kw_only=True, default=0)
+    ranging_rounds: list = field(kw_only=True, default_factory=list)
 
     def __post_init__(self):
         self.mt = MessageType.COMMAND
@@ -3016,19 +3062,44 @@ class SessionUpdateDtAnchorRangingRoundsCmd(SessionConfigPacket):
     def parse(fields: dict, span: bytes) -> Tuple['SessionUpdateDtAnchorRangingRoundsCmd', bytes]:
         if fields['mt'] != MessageType.COMMAND or fields['oid'] != SessionConfigOpcodeId.UPDATE_DT_ANCHOR_RANGING_ROUNDS or fields['gid'] != GroupId.SESSION_CONFIG:
             raise Exception("Invalid constraint field values")
+        if len(span) < 5:
+            raise Exception('Invalid packet size')
+        value_ = int.from_bytes(span[0:4], byteorder='little')
+        fields['session_token'] = value_
+        ranging_rounds_count = span[4]
+        span = span[5:]
+        if len(span) < ranging_rounds_count * 2:
+            raise Exception('Invalid packet size')
+        ranging_rounds = []
+        for n in range(ranging_rounds_count):
+            ranging_round, _ = DtAnchorRangingRound.parse(span[n * 2:(n + 1) * 2])
+            ranging_rounds.append(ranging_round)
+        fields['ranging_rounds'] = ranging_rounds
+        span = span[ranging_rounds_count * 2:]
         return SessionUpdateDtAnchorRangingRoundsCmd(**fields), span
 
     def serialize(self, payload: bytes = None) -> bytes:
         _span = bytearray()
+        if self.session_token > 4294967295:
+            print(f"Invalid value for field SessionUpdateDtAnchorRangingRoundsCmd::session_token: {self.session_token} > 4294967295; the value will be truncated")
+            self.session_token &= 4294967295
+        _span.extend(int.to_bytes((self.session_token << 0), length=4, byteorder='little'))
+        if len(self.ranging_rounds) > 255:
+            print(f"Invalid length for field SessionUpdateDtAnchorRangingRoundsCmd::ranging_rounds: {len(self.ranging_rounds)} > 255; the array will be truncated")
+            del self.ranging_rounds[255:]
+        _span.append((len(self.ranging_rounds) << 0))
+        for _elt in self.ranging_rounds:
+            _span.extend(_elt.serialize())
         return SessionConfigPacket.serialize(self, payload = bytes(_span))
 
     @property
     def size(self) -> int:
-        return 0
+        return len(self.ranging_rounds) * 2 + 5
 
 @dataclass
 class SessionUpdateDtAnchorRangingRoundsRsp(SessionConfigPacket):
-    
+    status: Status = field(kw_only=True, default=Status.OK)
+    ranging_round_indexes: bytearray = field(kw_only=True, default_factory=bytearray)
 
     def __post_init__(self):
         self.mt = MessageType.RESPONSE
@@ -3039,15 +3110,30 @@ class SessionUpdateDtAnchorRangingRoundsRsp(SessionConfigPacket):
     def parse(fields: dict, span: bytes) -> Tuple['SessionUpdateDtAnchorRangingRoundsRsp', bytes]:
         if fields['mt'] != MessageType.RESPONSE or fields['oid'] != SessionConfigOpcodeId.UPDATE_DT_ANCHOR_RANGING_ROUNDS or fields['gid'] != GroupId.SESSION_CONFIG:
             raise Exception("Invalid constraint field values")
+        if len(span) < 2:
+            raise Exception('Invalid packet size')
+        fields['status'] = Status.from_int(span[0])
+        ranging_round_indexes_count = span[1]
+        span = span[2:]
+        if len(span) < ranging_round_indexes_count:
+            raise Exception('Invalid packet size')
+        fields['ranging_round_indexes'] = list(span[:ranging_round_indexes_count])
+        span = span[ranging_round_indexes_count:]
         return SessionUpdateDtAnchorRangingRoundsRsp(**fields), span
 
     def serialize(self, payload: bytes = None) -> bytes:
         _span = bytearray()
+        _span.append((self.status << 0))
+        if len(self.ranging_round_indexes) > 255:
+            print(f"Invalid length for field SessionUpdateDtAnchorRangingRoundsRsp::ranging_round_indexes:  {len(self.ranging_round_indexes)} > 255; the array will be truncated")
+            del self.ranging_round_indexes[255:]
+        _span.append((len(self.ranging_round_indexes) << 0))
+        _span.extend(self.ranging_round_indexes)
         return SessionConfigPacket.serialize(self, payload = bytes(_span))
 
     @property
     def size(self) -> int:
-        return 0
+        return len(self.ranging_round_indexes) * 1 + 2
 
 @dataclass
 class SessionUpdateDtTagRangingRoundsCmd(SessionConfigPacket):
@@ -4128,6 +4214,59 @@ class ExtendedAddressOwrAoaRangingMeasurement(Packet):
     def size(self) -> int:
         return 19
 
+class DlTdoaAnchorLocationPresence(enum.IntEnum):
+    ABSENT = 0x0
+    PRESENT = 0x1
+
+    @staticmethod
+    def from_int(v: int) -> Union[int, 'DlTdoaAnchorLocationPresence']:
+        try:
+            return DlTdoaAnchorLocationPresence(v)
+        except ValueError as exn:
+            raise exn
+
+class DlTdoaAnchorLocationType(enum.IntEnum):
+    WGS84 = 0x0
+    RELATIVE = 0x1
+
+    @staticmethod
+    def from_int(v: int) -> Union[int, 'DlTdoaAnchorLocationType']:
+        try:
+            return DlTdoaAnchorLocationType(v)
+        except ValueError as exn:
+            raise exn
+
+@dataclass
+class DlTdoaAnchorLocationHeader(Packet):
+    presence: DlTdoaAnchorLocationPresence = field(kw_only=True, default=DlTdoaAnchorLocationPresence.ABSENT)
+    location_type: DlTdoaAnchorLocationType = field(kw_only=True, default=DlTdoaAnchorLocationType.WGS84)
+
+    def __post_init__(self):
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['DlTdoaAnchorLocationHeader', bytes]:
+        fields = {'payload': None}
+        if len(span) < 1:
+            raise Exception('Invalid packet size')
+        fields['presence'] = DlTdoaAnchorLocationPresence.from_int((span[0] >> 0) & 0x1)
+        fields['location_type'] = DlTdoaAnchorLocationType.from_int((span[0] >> 1) & 0x7f)
+        span = span[1:]
+        return DlTdoaAnchorLocationHeader(**fields), span
+
+    def serialize(self, payload: bytes = None) -> bytes:
+        _span = bytearray()
+        _value = (
+            (self.presence << 0) |
+            (self.location_type << 1)
+        )
+        _span.append(_value)
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return 1
+
 @dataclass
 class Wgs84Location(Packet):
     data: bytearray = field(kw_only=True, default_factory=bytearray)
@@ -4198,11 +4337,76 @@ class RelativeLocation(Packet):
     def size(self) -> int:
         return 10
 
+class DlTdoaMessageType(enum.IntEnum):
+    POLL_DTM = 0x0
+    RESPONSE_DTM = 0x1
+    FINAL_DTM = 0x2
+
+    @staticmethod
+    def from_int(v: int) -> Union[int, 'DlTdoaMessageType']:
+        try:
+            return DlTdoaMessageType(v)
+        except ValueError as exn:
+            raise exn
+
+class DlTdoaTxTimestampType(enum.IntEnum):
+    LOCAL_TIME_BASE = 0x0
+    COMMON_TIME_BASE = 0x1
+
+    @staticmethod
+    def from_int(v: int) -> Union[int, 'DlTdoaTxTimestampType']:
+        try:
+            return DlTdoaTxTimestampType(v)
+        except ValueError as exn:
+            raise exn
+
+class DlTdoaTimestampLength(enum.IntEnum):
+    FORTY_BIT = 0x0
+    SIXTY_FOUR_BIT = 0x1
+
+    @staticmethod
+    def from_int(v: int) -> Union[int, 'DlTdoaTimestampLength']:
+        try:
+            return DlTdoaTimestampLength(v)
+        except ValueError as exn:
+            raise exn
+
+@dataclass
+class DlTdoaTxTimestampConf(Packet):
+    timestamp_type: DlTdoaTxTimestampType = field(kw_only=True, default=DlTdoaTxTimestampType.LOCAL_TIME_BASE)
+    timestamp_length: DlTdoaTimestampLength = field(kw_only=True, default=DlTdoaTimestampLength.FORTY_BIT)
+
+    def __post_init__(self):
+        pass
+
+    @staticmethod
+    def parse(span: bytes) -> Tuple['DlTdoaTxTimestampConf', bytes]:
+        fields = {'payload': None}
+        if len(span) < 1:
+            raise Exception('Invalid packet size')
+        fields['timestamp_type'] = DlTdoaTxTimestampType.from_int((span[0] >> 0) & 0x1)
+        fields['timestamp_length'] = DlTdoaTimestampLength.from_int((span[0] >> 1) & 0x3)
+        span = span[1:]
+        return DlTdoaTxTimestampConf(**fields), span
+
+    def serialize(self, payload: bytes = None) -> bytes:
+        _span = bytearray()
+        _value = (
+            (self.timestamp_type << 0) |
+            (self.timestamp_length << 1)
+        )
+        _span.append(_value)
+        return bytes(_span)
+
+    @property
+    def size(self) -> int:
+        return 1
+
 @dataclass
 class DlTdoaRangingMeasurement(Packet):
     status: Status = field(kw_only=True, default=Status.OK)
-    message_type: int = field(kw_only=True, default=0)
-    tx_timestamp_type: int = field(kw_only=True, default=0)
+    message_type: DlTdoaMessageType = field(kw_only=True, default=DlTdoaMessageType.POLL_DTM)
+    tx_timestamp_type: DlTdoaTxTimestampType = field(kw_only=True, default=DlTdoaTxTimestampType.LOCAL_TIME_BASE)
     block_index: int = field(kw_only=True, default=0)
     round_index: int = field(kw_only=True, default=0)
     nlos: int = field(kw_only=True, default=0)
@@ -4220,8 +4424,8 @@ class DlTdoaRangingMeasurement(Packet):
     initiator_reply_time: int = field(kw_only=True, default=0)
     responder_reply_time: int = field(kw_only=True, default=0)
     initiator_responder_tof: int = field(kw_only=True, default=0)
-    wgs84_location: List[Wgs84Location] = field(kw_only=True, default_factory=list)
-    relative_location: List[RelativeLocation] = field(kw_only=True, default_factory=list)
+    wgs84_location: Optional[Wgs84Location] = field(kw_only=True, default=None)
+    relative_location: Optional[RelativeLocation] = field(kw_only=True, default=None)
     active_ranging_rounds: bytearray = field(kw_only=True, default_factory=bytearray)
 
     def __post_init__(self):
@@ -4233,13 +4437,13 @@ class DlTdoaRangingMeasurement(Packet):
         if len(span) < 15:
             raise Exception('Invalid packet size')
         fields['status'] = Status.from_int(span[0])
-        fields['message_type'] = span[1]
+        fields['message_type'] = DlTdoaMessageType.from_int(span[1])
         value_ = int.from_bytes(span[2:4], byteorder='little')
-        fields['tx_timestamp_type'] = (value_ >> 0) & 0x1
+        fields['tx_timestamp_type'] = DlTdoaTxTimestampType.from_int((value_ >> 0) & 0x1)
         tx_timestamp_length = (value_ >> 1) & 0x1
         rx_timestamp_length = (value_ >> 3) & 0x1
-        wgs84_location_count = (value_ >> 5) & 0x1
-        relative_location_count = (value_ >> 6) & 0x1
+        wgs84_location_present = (value_ >> 5) & 0x1
+        relative_location_present = (value_ >> 6) & 0x1
         active_ranging_rounds_count = (value_ >> 7) & 0xf
         value_ = int.from_bytes(span[4:6], byteorder='little')
         fields['block_index'] = value_
@@ -4294,20 +4498,12 @@ class DlTdoaRangingMeasurement(Packet):
         value_ = int.from_bytes(span[12:14], byteorder='little')
         fields['initiator_responder_tof'] = value_
         span = span[14:]
-        if len(span) < wgs84_location_count * 12:
-            raise Exception('Invalid packet size')
-        wgs84_location = []
-        for n in range(wgs84_location_count):
-            wgs84_location.append(Wgs84Location.parse_all(span[n * 12:(n + 1) * 12]))
-        fields['wgs84_location'] = wgs84_location
-        span = span[wgs84_location_count * 12:]
-        if len(span) < relative_location_count * 10:
-            raise Exception('Invalid packet size')
-        relative_location = []
-        for n in range(relative_location_count):
-            relative_location.append(RelativeLocation.parse_all(span[n * 10:(n + 1) * 10]))
-        fields['relative_location'] = relative_location
-        span = span[relative_location_count * 10:]
+        if wgs84_location_present == 1:
+            wgs84_location, span = Wgs84Location.parse(span)
+            fields['wgs84_location'] = wgs84_location
+        if relative_location_present == 1:
+            relative_location, span = RelativeLocation.parse(span)
+            fields['relative_location'] = relative_location
         if len(span) < active_ranging_rounds_count:
             raise Exception('Invalid packet size')
         fields['active_ranging_rounds'] = list(span[:active_ranging_rounds_count])
@@ -4317,19 +4513,7 @@ class DlTdoaRangingMeasurement(Packet):
     def serialize(self, payload: bytes = None) -> bytes:
         _span = bytearray()
         _span.append((self.status << 0))
-        if self.message_type > 255:
-            print(f"Invalid value for field DlTdoaRangingMeasurement::message_type: {self.message_type} > 255; the value will be truncated")
-            self.message_type &= 255
         _span.append((self.message_type << 0))
-        if self.tx_timestamp_type > 1:
-            print(f"Invalid value for field DlTdoaRangingMeasurement::tx_timestamp_type: {self.tx_timestamp_type} > 1; the value will be truncated")
-            self.tx_timestamp_type &= 1
-        if len(self.wgs84_location) > 1:
-            print(f"Invalid length for field DlTdoaRangingMeasurement::wgs84_location:  {len(self.wgs84_location)} > 1; the array will be truncated")
-            del self.wgs84_location[1:]
-        if len(self.relative_location) > 1:
-            print(f"Invalid length for field DlTdoaRangingMeasurement::relative_location:  {len(self.relative_location)} > 1; the array will be truncated")
-            del self.relative_location[1:]
         if len(self.active_ranging_rounds) > 15:
             print(f"Invalid length for field DlTdoaRangingMeasurement::active_ranging_rounds:  {len(self.active_ranging_rounds)} > 15; the array will be truncated")
             del self.active_ranging_rounds[15:]
@@ -4337,8 +4521,8 @@ class DlTdoaRangingMeasurement(Packet):
             (self.tx_timestamp_type << 0) |
             ((0 if self.tx_timestamp_64 is None else 1) << 1) |
             ((0 if self.rx_timestamp_64 is None else 1) << 3) |
-            (len(self.wgs84_location) << 5) |
-            (len(self.relative_location) << 6) |
+            ((0 if self.wgs84_location is None else 1) << 5) |
+            ((0 if self.relative_location is None else 1) << 6) |
             (len(self.active_ranging_rounds) << 7)
         )
         _span.extend(int.to_bytes(_value, length=2, byteorder='little'))
@@ -4410,10 +4594,10 @@ class DlTdoaRangingMeasurement(Packet):
             print(f"Invalid value for field DlTdoaRangingMeasurement::initiator_responder_tof: {self.initiator_responder_tof} > 65535; the value will be truncated")
             self.initiator_responder_tof &= 65535
         _span.extend(int.to_bytes((self.initiator_responder_tof << 0), length=2, byteorder='little'))
-        for _elt in self.wgs84_location:
-            _span.extend(_elt.serialize())
-        for _elt in self.relative_location:
-            _span.extend(_elt.serialize())
+        if self.wgs84_location is not None:
+            _span.extend(self.wgs84_location.serialize())
+        if self.relative_location is not None:
+            _span.extend(self.relative_location.serialize())
         _span.extend(self.active_ranging_rounds)
         return bytes(_span)
 
